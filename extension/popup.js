@@ -37,101 +37,126 @@ document.addEventListener("DOMContentLoaded", () => {
     return html;
   };
 
-  async function summarize() {
-    loading.style.display = "block";
-    errorEl.textContent = "";
-    resultEl.innerHTML = "";
-    rawMarkdownSummary = ""; // Reset raw markdown
-    copyMarkdownBtn.disabled = true; // Disable button while loading
-    copyMarkdownBtn.textContent = "コピー"; // Reset button text
+  // Helper function to get text from the active tab
+  async function getActiveTabText() {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab || !tab.id) { // Added a check for tab itself
+      throw new Error("アクティブなタブが見つかりませんでした。");
+    }
 
     try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab.id) throw new Error("No active tab");
-
       const [injectionResult] = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         func: () => document.body.innerText,
       });
 
       if (chrome.runtime.lastError) {
-        // Handle potential errors from executeScript, e.g., if the page is restricted
-        throw new Error(`Script injection failed: ${chrome.runtime.lastError.message}`);
+        throw new Error(`スクリプトの挿入に失敗しました: ${chrome.runtime.lastError.message}`);
       }
       if (!injectionResult || !injectionResult.result) {
-          throw new Error("Could not extract text from the page. The page might be protected or empty.");
+        throw new Error("ページからテキストを抽出できませんでした。ページが保護されているか、空である可能性があります。");
       }
+      return injectionResult.result;
+    } catch (e) {
+        // More specific error for executeScript failure
+        console.error("[GemmaSummarizer] Error in executeScript:", e);
+        throw new Error(`ページコンテンツの取得に失敗しました: ${e.message}`);
+    }
+  }
 
-      const pageText = injectionResult.result;
-      console.log("[GemmaSummarizer] Extracted text length:", pageText.length);
+  // Helper function to call the Ollama API
+  async function callOllamaAPI(text, promptTemplate, model, endpoint) {
+    const maxLength = 5000; // Max length for the text to summarize
+    let textToSummarize = text;
+    if (text.length > maxLength) {
+      textToSummarize = text.slice(0, maxLength) + "\n\n[... truncated]";
+      // console.log("[GemmaSummarizer] Text truncated to", maxLength, "chars"); // Keep for debugging if necessary
+    }
 
-      const maxLength = 5000; // Keep your existing max length
-      let textToSummarize = pageText;
-      if (pageText.length > maxLength) {
-        textToSummarize = pageText.slice(0, maxLength) + "\n\n[... truncated]";
-        console.log("[GemmaSummarizer] Text truncated to", maxLength, "chars");
+    const payload = {
+      model: model,
+      prompt: promptTemplate + textToSummarize,
+      stream: false,
+    };
+
+    // console.log("[GemmaSummarizer] API URL:", endpoint); // Keep for debugging
+    // console.log("[GemmaSummarizer] API Payload prompt length:", payload.prompt.length); // Keep for debugging
+
+    try {
+        const response = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        });
+        return response;
+    } catch (fetchErr) {
+        console.error("[GemmaSummarizer] Fetch failed:", fetchErr);
+        if (fetchErr instanceof TypeError && fetchErr.message.includes('Failed to fetch')) {
+            throw new Error("APIへの接続に失敗しました。Ollamaサーバーが起動しているか、URL設定を確認してください。");
+        }
+        throw new Error(`ネットワークエラー: ${fetchErr.message}`); // More generic network error
+    }
+  }
+
+  // Helper function to handle the API response
+  async function handleAPIResponse(response) {
+    // console.log("[GemmaSummarizer] Response status:", response.status, response.statusText); // Keep for debugging
+    if (!response.ok) {
+      let apiErrorMsg = `APIエラー: ${response.status}`;
+      try {
+        const errorData = await response.json();
+        if (errorData && errorData.error) {
+          apiErrorMsg += ` - ${errorData.error}`;
+        }
+      } catch (e) {
+        // console.warn("[GemmaSummarizer] Could not parse error response JSON:", e); // Keep for debugging
       }
+      throw new Error(apiErrorMsg);
+    }
 
-      // Load Ollama endpoint and model from settings (with defaults)
+    const data = await response.json();
+    // console.log("[GemmaSummarizer] Response JSON:", data); // Keep for debugging
+
+    if (typeof data.response === "string") {
+      return data.response.trim();
+    } else {
+      throw new Error("APIから有効な形式の要約が返されませんでした。");
+    }
+  }
+
+  // Main summarize function, now refactored
+  async function summarize() {
+    loading.style.display = "block";
+    errorEl.textContent = "";
+    resultEl.innerHTML = "";
+    rawMarkdownSummary = "";
+    copyMarkdownBtn.disabled = true;
+    copyMarkdownBtn.textContent = "コピー";
+
+    try {
+      const pageText = await getActiveTabText();
+      // console.log("[GemmaSummarizer] Extracted text length:", pageText.length); // Keep for debugging
+
       const settings = await new Promise(resolve => {
         chrome.storage.sync.get(
-        { ollamaEndpoint: "http://localhost:11434", modelName: "gemma3:27b-it-qat" },
+          { ollamaEndpoint: "http://localhost:11434", modelName: "gemma3:27b-it-qat" },
           resolve
         );
       });
       const { ollamaEndpoint, modelName } = settings;
-      const url = `${ollamaEndpoint}/api/generate`;
-      const payload = {
-        model: modelName,
-        prompt: "以下の文章を日本語で要約してください:\n\n" + textToSummarize,
-        stream: false
-      };
+      const apiEndpoint = `${ollamaEndpoint}/api/generate`;
+      const promptTemplate = "以下の文章を日本語で要約してください:\n\n";
 
-      console.log("[GemmaSummarizer] URL:", url);
-      console.log("[GemmaSummarizer] Payload prompt length:", payload.prompt.length);
+      const response = await callOllamaAPI(pageText, promptTemplate, modelName, apiEndpoint);
+      rawMarkdownSummary = await handleAPIResponse(response);
 
-
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      }).catch(fetchErr => {
-        console.error("[GemmaSummarizer] Fetch failed:", fetchErr);
-        // Try to provide a more user-friendly message for common network issues
-        if (fetchErr instanceof TypeError && fetchErr.message.includes('Failed to fetch')) {
-            throw new Error("APIへの接続に失敗しました。サーバーが起動しているか確認してください。");
-        }
-        throw fetchErr;
-      });
-
-      console.log("[GemmaSummarizer] Response status:", response.status, response.statusText);
-      if (!response.ok) {
-        // Try to get more details from the API error response
-        let apiErrorMsg = `API error: ${response.status}`;
-        try {
-            const errorData = await response.json();
-            if (errorData && errorData.error) {
-                apiErrorMsg += ` - ${errorData.error}`;
-            }
-        } catch (e) { /* Ignore if error response is not JSON */ }
-        throw new Error(apiErrorMsg);
-      }
-
-      const data = await response.json();
-      console.log("[GemmaSummarizer] Response JSON:", data);
-
-      if (typeof data.response === "string") {
-        rawMarkdownSummary = data.response.trim(); // Store raw Markdown
-        resultEl.innerHTML = renderMarkdown(rawMarkdownSummary);
-        copyMarkdownBtn.disabled = false; // Enable copy button
-      } else {
-        throw new Error("APIから有効な要約が返されませんでした。");
-      }
+      resultEl.innerHTML = renderMarkdown(rawMarkdownSummary);
+      copyMarkdownBtn.disabled = false;
     } catch (err) {
-      console.error("[GemmaSummarizer] Error:", err);
-      if (err.stack) console.error(err.stack);
-      errorEl.textContent = err.message || String(err);
-      resultEl.innerHTML = ""; // Clear any previous results
+      console.error("[GemmaSummarizer] Summarization error:", err); // Centralized error logging
+      // if (err.stack) console.error(err.stack); // Potentially too verbose for users, good for dev
+      errorEl.textContent = err.message || "不明なエラーが発生しました。";
+      resultEl.innerHTML = "";
       rawMarkdownSummary = "";
       copyMarkdownBtn.disabled = true;
     } finally {
@@ -154,7 +179,7 @@ document.addEventListener("DOMContentLoaded", () => {
       console.error("[GemmaSummarizer] Failed to copy text: ", err);
       errorEl.textContent = "テキストのコピーに失敗しました。";
       // Optionally, revert button text if copy failed immediately
-      // copyMarkdownBtn.textContent = "コピー";
+      // copyMarkdownBtn.textContent = "コピー"; // Already handled by disabling
     }
   });
 
