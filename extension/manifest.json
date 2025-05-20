@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Gemma3 Summarizer",
+  "version": "1.0",
+  "description": "Summarize page text using the Gemma3 model via Ollama HTTP API.",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["<all_urls>"],
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": false
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Summarize with Gemma"
+  }
+}

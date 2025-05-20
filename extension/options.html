@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>設定 - Gemma3 Summarizer</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    label { display: block; margin-top: 10px; }
+    input { width: 100%; padding: 5px; margin-top: 5px; box-sizing: border-box; }
+    button { margin-top: 15px; padding: 6px 12px; font-size: 1em; }
+    #status { margin-top: 10px; color: #4CAF50; }
+  </style>
+</head>
+<body>
+  <h1>設定</h1>
+  <label>
+    Ollama エンドポイント (ホスト:ポート):
+    <input type="text" id="endpointInput" placeholder="http://localhost:11434">
+  </label>
+  <label>
+    モデル名:
+    <input type="text" id="modelInput" placeholder="gemma3:27b-it-qat">
+  </label>
+  <button id="saveBtn">保存</button>
+  <div id="status"></div>
+  <script src="options.js"></script>
+</body>
+</html>
