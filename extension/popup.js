@@ -4,6 +4,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const errorEl = document.getElementById("error");
   const copyMarkdownBtn = document.getElementById("copyMarkdownBtn");
   const settingsBtn = document.getElementById("settingsBtn");
+  const headerTitle = document.querySelector(".header-title");
   settingsBtn.addEventListener("click", () => {
     if (chrome.runtime.openOptionsPage) {
       chrome.runtime.openOptionsPage();
@@ -13,6 +14,23 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   let rawMarkdownSummary = ""; // Variable to store the raw Markdown
+
+  // Function to update header title with model name
+  async function updateHeaderTitle() {
+    try {
+      const settings = await new Promise(resolve => {
+        chrome.storage.sync.get(
+          { modelName: "gemma3:27b-it-qat" },
+          resolve
+        );
+      });
+      const { modelName } = settings;
+      headerTitle.textContent = modelName || "要約エンジン";
+    } catch (err) {
+      console.error("[GemmaSummarizer] Failed to update header title:", err);
+      headerTitle.textContent = "要約エンジン"; // Fallback to default
+    }
+  }
 
   // Minimal Markdown renderer (from your original code)
   const renderMarkdown = (md) => {
@@ -191,5 +209,14 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  // Listen for storage changes to update header title when model changes
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName === 'sync' && changes.modelName) {
+      updateHeaderTitle();
+    }
+  });
+
+  // Initialize header title and summarize
+  updateHeaderTitle();
   summarize(); // Initial call to summarize
 });
