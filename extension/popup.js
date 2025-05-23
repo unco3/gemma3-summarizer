@@ -98,6 +98,13 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  // Helper function to remove <think> tags and their content
+  function removeThinkTags(text) {
+    // Remove <think>...</think> tags and their content
+    // This regex matches <think> opening tag, any content (including newlines), and </think> closing tag
+    return text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  }
+
   // Helper function to handle the API response
   async function handleAPIResponse(response) {
     // console.log("[GemmaSummarizer] Response status:", response.status, response.statusText); // Keep for debugging
@@ -118,7 +125,8 @@ document.addEventListener("DOMContentLoaded", () => {
     // console.log("[GemmaSummarizer] Response JSON:", data); // Keep for debugging
 
     if (typeof data.response === "string") {
-      return data.response.trim();
+      // Remove think tags before returning the response
+      return removeThinkTags(data.response.trim());
     } else {
       throw new Error("APIから有効な形式の要約が返されませんでした。");
     }
