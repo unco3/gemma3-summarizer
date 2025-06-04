@@ -5,6 +5,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const copyMarkdownBtn = document.getElementById("copyMarkdownBtn");
   const settingsBtn = document.getElementById("settingsBtn");
   const headerTitle = document.querySelector(".header-title");
+  const resizeHandle = document.getElementById("resizeHandle");
   settingsBtn.addEventListener("click", () => {
     if (chrome.runtime.openOptionsPage) {
       chrome.runtime.openOptionsPage();
@@ -14,6 +15,72 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   let rawMarkdownSummary = ""; // Variable to store the raw Markdown
+
+  // Resize functionality
+  let isResizing = false;
+  
+  // Load saved dimensions
+  async function loadSavedDimensions() {
+    try {
+      const dimensions = await new Promise(resolve => {
+        chrome.storage.sync.get(
+          { popupWidth: 350, popupHeight: 400 },
+          resolve
+        );
+      });
+      document.body.style.width = dimensions.popupWidth + 'px';
+      document.body.style.height = dimensions.popupHeight + 'px';
+    } catch (err) {
+      console.error("[GemmaSummarizer] Failed to load saved dimensions:", err);
+    }
+  }
+
+  // Save dimensions to storage
+  async function saveDimensions(width, height) {
+    try {
+      await chrome.storage.sync.set({
+        popupWidth: width,
+        popupHeight: height
+      });
+    } catch (err) {
+      console.error("[GemmaSummarizer] Failed to save dimensions:", err);
+    }
+  }
+
+  // Resize handle functionality
+  resizeHandle.addEventListener("mousedown", (e) => {
+    isResizing = true;
+    e.preventDefault();
+    
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startWidth = parseInt(window.getComputedStyle(document.body).width, 10);
+    const startHeight = parseInt(window.getComputedStyle(document.body).height, 10);
+
+    const handleMouseMove = (e) => {
+      if (!isResizing) return;
+      
+      const newWidth = Math.max(300, Math.min(800, startWidth + (e.clientX - startX)));
+      const newHeight = Math.max(200, Math.min(700, startHeight + (e.clientY - startY)));
+      
+      document.body.style.width = newWidth + 'px';
+      document.body.style.height = newHeight + 'px';
+    };
+
+    const handleMouseUp = () => {
+      if (isResizing) {
+        isResizing = false;
+        const finalWidth = parseInt(window.getComputedStyle(document.body).width, 10);
+        const finalHeight = parseInt(window.getComputedStyle(document.body).height, 10);
+        saveDimensions(finalWidth, finalHeight);
+      }
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+  });
 
   // Function to update header title with model name
   async function updateHeaderTitle() {
@@ -216,7 +283,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Initialize header title and summarize
+  // Initialize header title, load dimensions, and summarize
+  loadSavedDimensions();
   updateHeaderTitle();
   summarize(); // Initial call to summarize
 });

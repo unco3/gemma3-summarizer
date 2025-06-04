@@ -24,8 +24,9 @@
       display: flex;
       flex-direction: column;
       min-height: 200px;
-      max-height: 500px;
+      max-height: 600px;
       overflow: hidden;
+      position: relative;
     }
 
     .header {
@@ -196,6 +197,22 @@
       background-color: #62d6f3;
     }
 
+    .resize-handle {
+      position: absolute;
+      bottom: 0;
+      right: 0;
+      width: 15px;
+      height: 15px;
+      cursor: nw-resize;
+      background: linear-gradient(-45deg, transparent 30%, var(--accent-color) 30%, var(--accent-color) 35%, transparent 35%, transparent 65%, var(--accent-color) 65%, var(--accent-color) 70%, transparent 70%);
+      opacity: 0.7;
+      z-index: 1000;
+    }
+
+    .resize-handle:hover {
+      opacity: 1;
+    }
+
   </style>
 </head>
 <body>
@@ -211,6 +228,7 @@
     </div>
     <div id="error"></div> <div id="result"></div>
   </div>
+  <div class="resize-handle" id="resizeHandle"></div>
   <script src="popup.js"></script>
 </body>
 </html>
